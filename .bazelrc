@@ -1,0 +1,13 @@
+common --symlink_prefix=.bin/
+build --copt=-fPIC
+build --copt=-DPERI_LINUX
+build --copt=-DPERI_EDITOR
+build --host_copt=-DPERI_LINUX
+build --host_copt=-DPERI_DEBUG
+build:debug --compilation_mode=dbg
+build:debug --copt=-DPERI_DEBUG
+build:release --compilation_mode=opt
+build:release --copt=-O3
+build:release --copt=-DPERI_RELEASE
+test --test_output=errors
+run --run_in_cwd

@@ -1,0 +1,18 @@
+module(
+    name = "ttx_cuda",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "perimortem", version = "0.0.1", repo_name = "tetrodotoxin")
+local_path_override(
+    module_name = "perimortem",
+    path = "../tetrodotoxin",
+)
+
+register_toolchains("@tetrodotoxin//toolchain:cc_toolchain_for_linux_x86_64")
+
+cuda_repository = use_repo_rule("//build:sdk.bzl", "cuda_repository")
+
+cuda_repository(name = "cuda_sdk")
