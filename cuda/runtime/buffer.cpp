@@ -23,8 +23,12 @@ auto Runtime::Buffer::allocate(
 
   CurrentContext current(program.get_context());
   CUdeviceptr address = 0;
-  if (current.status != CUDA_SUCCESS ||
-      cuMemAlloc(&address, size) != CUDA_SUCCESS) {
+  auto status = current.status;
+  if (status == CUDA_SUCCESS) {
+    status = cuMemAlloc(&address, size);
+  }
+
+  if (status != CUDA_SUCCESS) {
     return TTX_DATA_IO_ERROR;
   }
 
@@ -34,10 +38,13 @@ auto Runtime::Buffer::allocate(
   auto memory = Core::Object<>::create(descriptor).get_payload();
   auto* buffer =
       new (memory, Core::Placement::Construct) Buffer(program, address, size);
-  *output = {buffer->get_query(), [](const void* source) {
-               Core::Object<>(reinterpret_cast<U8*>(const_cast<void*>(source)))
-                   .release();
-             }};
+  *output = {
+    buffer->get_query(),
+    [](const void* source) {
+      Core::Object<>(reinterpret_cast<U8*>(const_cast<void*>(source)))
+          .release();
+    },
+  };
 
   return TTX_DATA_SUCCESS;
 }
@@ -45,7 +52,12 @@ auto Runtime::Buffer::allocate(
 Runtime::Buffer::~Buffer() {
   {
     CurrentContext current(program.get_context());
-    if (current.status != CUDA_SUCCESS || cuMemFree(address) != CUDA_SUCCESS) {
+    auto status = current.status;
+    if (status == CUDA_SUCCESS) {
+      status = cuMemFree(address);
+    }
+
+    if (status != CUDA_SUCCESS) {
       Core::Diagnostics::Log::fatal(
           "CUDA buffer could not release its allocation."_view);
     }
@@ -79,11 +91,13 @@ auto Runtime::Buffer::get_query() const -> ttx_semantic_query {
           }
 
           CurrentContext current(buffer.program.get_context());
-          return current.status == CUDA_SUCCESS &&
-                         cuMemcpyDtoH(output, buffer.address + offset, size) ==
-                             CUDA_SUCCESS
-                     ? TTX_DATA_SUCCESS
-                     : TTX_DATA_IO_ERROR;
+          if (current.status != CUDA_SUCCESS) {
+            return TTX_DATA_IO_ERROR;
+          }
+
+          const auto status =
+              cuMemcpyDtoH(output, buffer.address + offset, size);
+          return status == CUDA_SUCCESS ? TTX_DATA_SUCCESS : TTX_DATA_IO_ERROR;
         },
         [](const void* source, Count offset,
            perimortem_view_bytes input) -> ttx_data_status {
@@ -93,13 +107,15 @@ auto Runtime::Buffer::get_query() const -> ttx_semantic_query {
           }
 
           CurrentContext current(buffer.program.get_context());
-          return current.status == CUDA_SUCCESS &&
-                         cuMemcpyHtoD(
-                             buffer.address + offset, input.data, input.size) ==
-                             CUDA_SUCCESS
-                     ? TTX_DATA_SUCCESS
-                     : TTX_DATA_IO_ERROR;
-        }};
+          if (current.status != CUDA_SUCCESS) {
+            return TTX_DATA_IO_ERROR;
+          }
+
+          const auto status =
+              cuMemcpyHtoD(buffer.address + offset, input.data, input.size);
+          return status == CUDA_SUCCESS ? TTX_DATA_SUCCESS : TTX_DATA_IO_ERROR;
+        },
+      };
 
       return static_cast<ttx_binding_status>(
           Binding::provide<Cuda::Contracts::Buffer>(
@@ -109,5 +125,6 @@ auto Runtime::Buffer::get_query() const -> ttx_semantic_query {
       return System::Uuid(id) == Cuda::Contracts::Buffer::contract_id
                  ? TTX_BINDING_SATISFIED
                  : TTX_BINDING_UNSUPPORTED;
-    }};
+    },
+  };
 }

@@ -12,8 +12,9 @@
 // Launch geometry belongs to the caller's CUDA policy rather than an image
 // convention. The prepared argument frame is borrowed until launch returns.
 // Completion includes device execution, keeping asynchronous scheduling outside
-// this contract. A failed launch may have modified device buffers, so publishing
-// a new application result remains the enclosing operation's responsibility.
+// this contract. A failed launch may have modified device buffers, so
+// publishing a new application result remains the enclosing operation's
+// responsibility.
 typedef struct cuda_launch {
   U32 grid_x, grid_y, grid_z;
   U32 block_x, block_y, block_z;
@@ -22,7 +23,8 @@ typedef struct cuda_launch {
 
 typedef struct cuda_kernel {
   const void* source;
-  ttx_data_status (*launch)(const void* source, cuda_launch geometry, ttx_storage arguments);
+  ttx_data_status (
+      *launch)(const void* source, cuda_launch geometry, ttx_storage arguments);
 } cuda_kernel;
 
 // C consumers can request the same prepared API form as the C++ facade.

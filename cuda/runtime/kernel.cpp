@@ -43,17 +43,20 @@ auto Runtime::Kernel::prepare(
   }
 
   Memory::Dynamic::Bytes name;
+  CUfunction function = nullptr;
   name.forgetful_resize(entry.size + 1);
   Core::Data::copy(name.get_access().get_data(), entry.data, entry.size);
   name.get_access().get_data()[entry.size] = 0;
-  CUfunction function = nullptr;
   if (cuModuleGetFunction(
           &function, program.get_module(),
           reinterpret_cast<const char*>(name.get_view().get_data())) !=
       CUDA_SUCCESS) {
     constexpr auto message = "CUDA entry was not found."_view;
     diagnostics.write(
-        diagnostics.source, {message.get_data(), message.get_size()});
+        diagnostics.source, {
+                              message.get_data(),
+                              message.get_size(),
+                            });
     return TTX_DATA_UNSUPPORTED;
   }
 
@@ -107,7 +110,8 @@ auto Runtime::Kernel::prepare(
       return Ttx::Data::Status::Incompatible;
     }
 
-    const auto& wanted = expected[next++];
+    const auto& wanted = expected[next];
+    ++next;
     return position.offset == wanted.offset && position.compatible(wanted)
                ? Ttx::Data::Status::Success
                : Ttx::Data::Status::Incompatible;
@@ -122,10 +126,13 @@ auto Runtime::Kernel::prepare(
   auto memory = Core::Object<>::create(descriptor).get_payload();
   auto* kernel = new (memory, Core::Placement::Construct)
       Kernel(program, function, frame, Core::Data::take(offsets));
-  *output = {kernel->get_query(), [](const void* source) {
-               Core::Object<>(reinterpret_cast<U8*>(const_cast<void*>(source)))
-                   .release();
-             }};
+  *output = {
+    kernel->get_query(),
+    [](const void* source) {
+      Core::Object<>(reinterpret_cast<U8*>(const_cast<void*>(source)))
+          .release();
+    },
+  };
 
   return TTX_DATA_SUCCESS;
 }
@@ -152,14 +159,18 @@ auto Runtime::Kernel::launch(cuda_launch geometry, ttx_storage supplied) const
     return TTX_DATA_IO_ERROR;
   }
 
-  const auto status = cuLaunchKernel(
+  auto status = cuLaunchKernel(
       function, geometry.grid_x, geometry.grid_y, geometry.grid_z,
       geometry.block_x, geometry.block_y, geometry.block_z,
       geometry.shared_bytes, nullptr, arguments.get_access().get_data(),
       nullptr);
-  return status == CUDA_SUCCESS && cuCtxSynchronize() == CUDA_SUCCESS
-             ? TTX_DATA_SUCCESS
-             : TTX_DATA_IO_ERROR;
+  // The caller may release its argument frame and buffer publications after
+  // this call, so execution finishes before the context scope ends.
+  if (status == CUDA_SUCCESS) {
+    status = cuCtxSynchronize();
+  }
+
+  return status == CUDA_SUCCESS ? TTX_DATA_SUCCESS : TTX_DATA_IO_ERROR;
 }
 
 auto Runtime::Kernel::get_query() const -> ttx_semantic_query {
@@ -176,7 +187,8 @@ auto Runtime::Kernel::get_query() const -> ttx_semantic_query {
         [](const void* source, cuda_launch geometry, ttx_storage arguments) {
           return static_cast<const Kernel*>(source)->launch(
               geometry, arguments);
-        }};
+        },
+      };
 
       return static_cast<ttx_binding_status>(
           Binding::provide<Cuda::Contracts::Kernel>(
@@ -186,5 +198,6 @@ auto Runtime::Kernel::get_query() const -> ttx_semantic_query {
       return System::Uuid(id) == Cuda::Contracts::Kernel::contract_id
                  ? TTX_BINDING_SATISFIED
                  : TTX_BINDING_UNSUPPORTED;
-    }};
+    },
+  };
 }

@@ -10,7 +10,8 @@ namespace Cuda::Runtime {
 
 // Device allocation belongs to an independently released publication. The
 // retained Program supplies context lifetime even after its original caller
-// drops the compiled program. Image dimensions have no role in this owner.
+// drops the compiled program. The caller gives those bytes their application
+// meaning.
 class Buffer {
  public:
   static auto allocate(Program& program, Count size, ttx_publication* output)

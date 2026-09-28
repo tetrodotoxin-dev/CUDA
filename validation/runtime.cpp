@@ -2,6 +2,7 @@
 // Copyright (c) 2023-present Matt Kaes and contributors
 
 #include "perimortem/core/static/bytes.hpp"
+#include "perimortem/core/static/vector.hpp"
 #include "perimortem/core/diagnostics/log.hpp"
 #include "perimortem/core/null_terminated.hpp"
 #include "perimortem/core/time.hpp"
@@ -66,6 +67,7 @@ static auto form() -> const Data::Form::Representation& {
 int main(int argc, char** argv) {
   Core::Diagnostics::Log::set_sink(Core::Diagnostics::Log::stderr_sink);
   require(argc == 2, "Supply the independent CUDA provider."_view);
+
   Memory::Allocator::Arena errors;
   auto module = accepted(
       Concept::Modules::Module::load(
@@ -93,17 +95,33 @@ extern "C" __global__ void transform(float* out, const float* in, unsigned count
 extern "C" __global__ void empty() {}
 )CUDA"_view;
   const cuda_source include{
-    {reinterpret_cast<const U8*>("parameters.cuh"), 14},
-    {header.get_data(), header.get_size()}};
+    {
+      reinterpret_cast<const U8*>("parameters.cuh"),
+      14,
+    },
+    {
+      header.get_data(),
+      header.get_size(),
+    },
+  };
 
   const cuda_compile_request request{
-    {{reinterpret_cast<const U8*>("project.cu"), 10},
-     {source.get_data(), source.get_size()}},
+    {
+      {
+        reinterpret_cast<const U8*>("project.cu"),
+        10,
+      },
+      {
+        source.get_data(),
+        source.get_size(),
+      },
+    },
     &include,
     1,
     nullptr,
     0,
-    0};
+    0,
+  };
 
   Memory::Dynamic::Bytes diagnostic;
   const auto compilation_started = Core::Time::now();
@@ -115,39 +133,69 @@ extern "C" __global__ void empty() {}
   auto output_owner = accepted(program.allocate(4 * sizeof(R32)));
   auto input = accepted(input_owner.get_query().bind<Buffer>());
   auto output = accepted(output_owner.get_query().bind<Buffer>());
-  const R32 values[] = {1, 2, 3, 4};
+  const Core::Static::Vector<R32, 4> values = {
+    {
+      1,
+      2,
+      3,
+      4,
+    },
+  };
 
   require(
-      input.write(0, {reinterpret_cast<const U8*>(values), sizeof(values)}) ==
-          Data::Status::Success,
+      input.write(
+          0,
+          {
+            reinterpret_cast<const U8*>(values.get_data()),
+            sizeof(values),
+          }) == Data::Status::Success,
       "Input upload failed."_view);
   require(
       input.write(
-          sizeof(values), {reinterpret_cast<const U8*>(values),
-                           sizeof(values)}) == Data::Status::Bounds,
+          sizeof(values),
+          {
+            reinterpret_cast<const U8*>(values.get_data()),
+            sizeof(values),
+          }) == Data::Status::Bounds,
       "Buffer accepted an out of range write."_view);
 
-  const cuda_argument parameters[] = {
-    {__builtin_offsetof(Arguments, output), &form<U64>()},
-    {__builtin_offsetof(Arguments, input), &form<U64>()},
-    {__builtin_offsetof(Arguments, count), &form<U32>()},
-    {__builtin_offsetof(Arguments, parameters), &form<Parameters>()},
-    {__builtin_offsetof(Arguments, adjustment), &form<R64>()},
+  const Core::Static::Vector<cuda_argument, 5> parameters = {
+    {
+      cuda_argument{
+        __builtin_offsetof(Arguments, output),
+        &form<U64>(),
+      },
+      {
+        __builtin_offsetof(Arguments, input),
+        &form<U64>(),
+      },
+      {
+        __builtin_offsetof(Arguments, count),
+        &form<U32>(),
+      },
+      {
+        __builtin_offsetof(Arguments, parameters),
+        &form<Parameters>(),
+      },
+      {
+        __builtin_offsetof(Arguments, adjustment),
+        &form<R64>(),
+      },
+    },
   };
 
   const auto preparation_started = Core::Time::now();
   auto kernel_owner = accepted(program.prepare(
-      "transform"_view, form<Arguments>(), parameters, diagnostic));
+      "transform"_view, form<Arguments>(), parameters.get_view(), diagnostic));
   const auto preparation_ns =
       preparation_started.measure().convert_to_nanoseconds();
   auto kernel = accepted(kernel_owner.get_query().bind<Kernel>());
-  cuda_argument wrong[5];
-  for (Count i = 0; i != 5; ++i) {
-    wrong[i] = parameters[i];
-  }
+  auto wrong = parameters;
   wrong[2].representation = &form<U64>();
   require(
-      program.prepare("transform"_view, form<Arguments>(), wrong, diagnostic)
+      program
+          .prepare(
+              "transform"_view, form<Arguments>(), wrong.get_view(), diagnostic)
           .visit(
               [](auto&) { return False; },
               [](Data::Status status) {
@@ -155,7 +203,10 @@ extern "C" __global__ void empty() {}
               }),
       "Wrong parameter extent was accepted."_view);
   require(
-      program.prepare("absent"_view, form<Arguments>(), parameters, diagnostic)
+      program
+          .prepare(
+              "absent"_view, form<Arguments>(), parameters.get_view(),
+              diagnostic)
           .visit(
               [](auto&) { return False; },
               [](Data::Status status) {
@@ -165,7 +216,8 @@ extern "C" __global__ void empty() {}
   require(
       program
           .prepare(
-              "transform"_view, form<Arguments>(), {parameters, 4}, diagnostic)
+              "transform"_view, form<Arguments>(), parameters.slice(0, 4),
+              diagnostic)
           .visit(
               [](auto&) { return False; },
               [](Data::Status status) {
@@ -177,7 +229,10 @@ extern "C" __global__ void empty() {}
   // and buffer publications then outlive the original Program and discovery.
   constexpr auto broken = "this is not CUDA source"_view;
   auto invalid = request;
-  invalid.source.text = {broken.get_data(), broken.get_size()};
+  invalid.source.text = {
+    broken.get_data(),
+    broken.get_size(),
+  };
 
   require(
       compiler.compile(invalid, diagnostic)
@@ -190,19 +245,39 @@ extern "C" __global__ void empty() {}
   require(
       !diagnostic.is_empty(), "Compilation lost the source diagnostic."_view);
   program_owner.close();
-  Arguments frame{output.get_address(), input.get_address(), 4, {2.0f, 3}, 0.5};
 
-  const Data::Form::Storage storage(
-      {&form<Arguments>(), reinterpret_cast<U8*>(&frame), sizeof(frame)});
-  const cuda_launch geometry{1, 1, 1, 32, 1, 1, 0};
+  Arguments frame{
+    output.get_address(),
+    input.get_address(),
+    4,
+    {
+      2.0f,
+      3,
+    },
+    0.5,
+  };
+
+  const Data::Form::Storage storage({
+    &form<Arguments>(),
+    reinterpret_cast<U8*>(&frame),
+    sizeof(frame),
+  });
+  const cuda_launch geometry{
+    1, 1, 1, 32, 1, 1, 0,
+  };
 
   require(
       kernel.launch(geometry, storage) == Data::Status::Success,
       "General argument launch failed."_view);
-  R32 observed[4];
+
+  Core::Static::Vector<R32, 4> observed;
   require(
-      output.read(0, {reinterpret_cast<U8*>(observed), sizeof(observed)}) ==
-          Data::Status::Success,
+      output.read(
+          0,
+          {
+            reinterpret_cast<U8*>(observed.get_data()),
+            sizeof(observed),
+          }) == Data::Status::Success,
       "Output observation failed."_view);
   for (Count i = 0; i != 4; ++i) {
     require(
@@ -213,10 +288,13 @@ extern "C" __global__ void empty() {}
   U32 unrelated = 0;
   require(
       kernel.launch(
-          geometry, Data::Form::Storage(
-                        {&form<U32>(), reinterpret_cast<U8*>(&unrelated),
-                         sizeof(unrelated)})) == Data::Status::Incompatible,
+          geometry, Data::Form::Storage({
+                      &form<U32>(),
+                      reinterpret_cast<U8*>(&unrelated),
+                      sizeof(unrelated),
+                    })) == Data::Status::Incompatible,
       "A different input frame bypassed agreement."_view);
+
   const auto allocations = Core::Bibliotheca::check_out_requests();
   const auto launch_started = Core::Time::now();
   for (Count i = 0; i != 1000; ++i) {
@@ -229,6 +307,7 @@ extern "C" __global__ void empty() {}
   require(
       allocations == Core::Bibliotheca::check_out_requests(),
       "Warm dispatch allocated host state."_view);
+
   Core::Static::Bytes<256> measurement;
   Core::Writer::Textual writer(measurement);
   writer << "CUDA compilation_ns="_view << U64(compilation_ns)

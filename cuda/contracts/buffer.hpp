@@ -38,8 +38,12 @@ class Buffer {
 
   auto write(Count offset, Perimortem::Core::View::Bytes input) const
       -> Ttx::Data::Status {
-    return static_cast<Ttx::Data::Status>(
-        api.write(api.source, offset, {input.get_data(), input.get_size()}));
+    return static_cast<Ttx::Data::Status>(api.write(
+        api.source, offset,
+        {
+          input.get_data(),
+          input.get_size(),
+        }));
   }
 
  private:

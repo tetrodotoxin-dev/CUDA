@@ -35,7 +35,11 @@ static auto text(perimortem_view_bytes value) -> Memory::Dynamic::Bytes {
 static auto report(cuda_diagnostics sink, const char* message)
     -> ttx_data_status {
   const auto bytes = Core::NullTerminated::to_view(message);
-  sink.write(sink.source, {bytes.get_data(), bytes.get_size()});
+  sink.write(
+      sink.source, {
+                     bytes.get_data(),
+                     bytes.get_size(),
+                   });
   return TTX_DATA_IO_ERROR;
 }
 
@@ -65,9 +69,9 @@ auto Runtime::Program::create(
         report(diagnostics, "CUDA device or context is unavailable."));
   }
 
-  // Null termination and include names belong to NVRTC's boundary. Retain all
-  // source owners before lending their pointers, then discard them after the
-  // executable has been copied into CUDA's module owner.
+  // NVRTC consumes terminated strings and parallel include arrays. Build the
+  // owned strings first, then lend their pointers through compilation. The
+  // caller's input views remain borrowed only for this call.
   auto source = text(request.source.text);
   auto name = text(request.source.name);
   Memory::Dynamic::Vector<Memory::Dynamic::Bytes> names, headers, options;
@@ -93,9 +97,8 @@ auto Runtime::Program::create(
             options.get_view().get_data()[i].get_view().get_data()));
   }
 
-  // Use the selected device unless the author supplied a target explicitly.
-  // This preserves native image code generation while letting a project choose
-  // a deliberate compatibility target in its compiler options.
+  // An authored target controls NVRTC's compatibility checks. Add the device's
+  // compute capability only when the caller has not supplied a target.
   bool targeted = false;
   for (Count i = 0; i != options.get_size(); ++i) {
     const auto option = options.get_view().get_data()[i].get_view();
@@ -141,14 +144,17 @@ auto Runtime::Program::create(
       compiler, selected.get_size(), selected.get_view().get_data());
   if (status != NVRTC_SUCCESS) {
     size_t size = 0;
-    nvrtcGetProgramLogSize(compiler, &size);
     Memory::Dynamic::Bytes message;
+    nvrtcGetProgramLogSize(compiler, &size);
     message.forgetful_resize(size);
     if (size) {
       nvrtcGetProgramLog(
           compiler, reinterpret_cast<char*>(message.get_access().get_data()));
       diagnostics.write(
-          diagnostics.source, {message.get_view().get_data(), size - 1});
+          diagnostics.source, {
+                                message.get_view().get_data(),
+                                size - 1,
+                              });
     }
 
     nvrtcDestroyProgram(&compiler);
@@ -157,8 +163,8 @@ auto Runtime::Program::create(
   }
 
   size_t size = 0;
-  status = nvrtcGetPTXSize(compiler, &size);
   Memory::Dynamic::Bytes ptx;
+  status = nvrtcGetPTXSize(compiler, &size);
   ptx.forgetful_resize(size);
   if (status == NVRTC_SUCCESS) {
     status = nvrtcGetPTX(
@@ -172,6 +178,8 @@ auto Runtime::Program::create(
         report(diagnostics, nvrtcGetErrorString(status)));
   }
 
+  // The module copies the generated code into the retained context. Restore
+  // the caller's context before publishing the Program or releasing a failure.
   {
     CurrentContext current(result->context);
     driver = current.status;
@@ -199,10 +207,12 @@ auto Runtime::Program::compile(
       .visit(
           [&](Program& result) -> ttx_data_status {
             *output = {
-              result.get_query(), [](const void* source) {
+              result.get_query(),
+              [](const void* source) {
                 const_cast<Program*>(static_cast<const Program*>(source))
                     ->release();
-              }};
+              },
+            };
 
             return TTX_DATA_SUCCESS;
           },
@@ -212,29 +222,32 @@ auto Runtime::Program::compile(
 }
 
 auto Runtime::Program::compiler() -> Ttx::Semantic::Negotiation::Query {
-  return Query(
-      {nullptr,
-       [](const void*, perimortem_uuid id,
-          ttx_storage requested) -> ttx_binding_status {
-         if (System::Uuid(id) != Cuda::Contracts::Compiler::contract_id) {
-           return TTX_BINDING_UNSUPPORTED;
-         }
+  return Query({
+    nullptr,
+    [](const void*, perimortem_uuid id,
+       ttx_storage requested) -> ttx_binding_status {
+      if (System::Uuid(id) != Cuda::Contracts::Compiler::contract_id) {
+        return TTX_BINDING_UNSUPPORTED;
+      }
 
-         const cuda_compiler api{
-           nullptr, [](const void*, cuda_compile_request request,
-                       cuda_diagnostics errors, ttx_publication* output) {
-             return compile(request, errors, output);
-           }};
+      const cuda_compiler api{
+        nullptr,
+        [](const void*, cuda_compile_request request, cuda_diagnostics errors,
+           ttx_publication* output) {
+          return compile(request, errors, output);
+        },
+      };
 
-         return static_cast<ttx_binding_status>(
-             Binding::provide<Cuda::Contracts::Compiler>(
-                 api, Ttx::Data::Form::Storage(requested)));
-       },
-       [](const void*, perimortem_uuid id) -> ttx_binding_status {
-         return System::Uuid(id) == Cuda::Contracts::Compiler::contract_id
-                    ? TTX_BINDING_SATISFIED
-                    : TTX_BINDING_UNSUPPORTED;
-       }});
+      return static_cast<ttx_binding_status>(
+          Binding::provide<Cuda::Contracts::Compiler>(
+              api, Ttx::Data::Form::Storage(requested)));
+    },
+    [](const void*, perimortem_uuid id) -> ttx_binding_status {
+      return System::Uuid(id) == Cuda::Contracts::Compiler::contract_id
+                 ? TTX_BINDING_SATISFIED
+                 : TTX_BINDING_UNSUPPORTED;
+    },
+  });
 }
 
 auto Runtime::Program::get_query() const -> ttx_semantic_query {
@@ -259,7 +272,8 @@ auto Runtime::Program::get_query() const -> ttx_semantic_query {
           return Buffer::allocate(
               *const_cast<Program*>(static_cast<const Program*>(source)), size,
               output);
-        }};
+        },
+      };
 
       return static_cast<ttx_binding_status>(
           Binding::provide<Cuda::Contracts::Program>(
@@ -269,7 +283,8 @@ auto Runtime::Program::get_query() const -> ttx_semantic_query {
       return System::Uuid(id) == Cuda::Contracts::Program::contract_id
                  ? TTX_BINDING_SATISFIED
                  : TTX_BINDING_UNSUPPORTED;
-    }};
+    },
+  };
 }
 
 void Runtime::Program::retain() {
@@ -283,15 +298,22 @@ void Runtime::Program::release() {
 Runtime::Program::~Program() {
   if (module) {
     CurrentContext current(context);
-    if (current.status != CUDA_SUCCESS ||
-        cuModuleUnload(module) != CUDA_SUCCESS) {
+    auto status = current.status;
+    if (status == CUDA_SUCCESS) {
+      status = cuModuleUnload(module);
+    }
+
+    if (status != CUDA_SUCCESS) {
       Core::Diagnostics::Log::fatal(
           "CUDA program could not release its module."_view);
     }
   }
 
-  if (context && cuDevicePrimaryCtxRelease(device) != CUDA_SUCCESS) {
-    Core::Diagnostics::Log::fatal(
-        "CUDA program could not release its context."_view);
+  if (context) {
+    const auto status = cuDevicePrimaryCtxRelease(device);
+    if (status != CUDA_SUCCESS) {
+      Core::Diagnostics::Log::fatal(
+          "CUDA program could not release its context."_view);
+    }
   }
 }

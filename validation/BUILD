@@ -8,9 +8,8 @@ cc_test(
     srcs = ["runtime.cpp"],
     args = ["$(rootpath //cuda:plugin)"],
     data = ["//cuda:plugin"],
-    dynamic_deps = ["@tetrodotoxin//ttx:runtime"],
     tags = ["local"],
-    deps = ["//cuda/contracts"],
+    deps = ["//cuda:ttx_cuda"],
 )
 
 cc_test(
@@ -24,7 +23,16 @@ cc_test(
         "-Werror",
     ],
     data = ["//cuda:plugin"],
-    dynamic_deps = ["@tetrodotoxin//ttx:runtime"],
     tags = ["local"],
-    deps = ["//cuda/contracts"],
+    deps = ["//cuda:ttx_cuda"],
+)
+
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "BUILD",
+        "*.c",
+        "*.cpp",
+    ]),
+    visibility = ["//visibility:public"],
 )

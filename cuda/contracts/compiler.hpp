@@ -50,12 +50,17 @@ class Compiler {
       Result<Ttx::Semantic::Ownership::Publication, Ttx::Data::Status> {
     ttx_publication output = {};
 
-    errors.clear();
     const cuda_diagnostics sink = {
-      &errors, [](void* source, perimortem_view_bytes text) {
+      &errors,
+      [](void* source, perimortem_view_bytes text) {
         *static_cast<Perimortem::Memory::Dynamic::Bytes*>(source) =
-            Perimortem::Memory::Dynamic::Bytes({text.data, text.size});
-      }};
+            Perimortem::Memory::Dynamic::Bytes({
+              text.data,
+              text.size,
+            });
+      },
+    };
+    errors.clear();
 
     const auto status = api.compile(api.source, request, sink, &output);
     if (status != TTX_DATA_SUCCESS) {

@@ -5,8 +5,9 @@
 #define TTX_CUDA_CONTRACTS_BUFFER_H
 
 #include "perimortem/core/view/bytes.h"
-#include "ttx/data/status.h"
+
 #include "ttx/data/form/representation.h"
+#include "ttx/data/status.h"
 
 #define TTX_CUDA_BUFFER_HIGH ((U64)0xc1bcf233d4104c0bULL)
 #define TTX_CUDA_BUFFER_LOW ((U64)0x84f0529809175604ULL)
@@ -19,8 +20,10 @@ typedef struct cuda_buffer {
   const void* source;
   U64 (*address)(const void* source);
   Count (*size)(const void* source);
-  ttx_data_status (*read)(const void* source, Count offset, U8* output, Count size);
-  ttx_data_status (*write)(const void* source, Count offset, perimortem_view_bytes input);
+  ttx_data_status (
+      *read)(const void* source, Count offset, U8* output, Count size);
+  ttx_data_status (
+      *write)(const void* source, Count offset, perimortem_view_bytes input);
 } cuda_buffer;
 
 // C consumers can request the same prepared API form as the C++ facade.

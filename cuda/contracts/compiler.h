@@ -31,8 +31,11 @@ typedef struct cuda_compile_request {
 
 typedef struct cuda_compiler {
   const void* source;
-  ttx_data_status (*compile)(const void* source, cuda_compile_request request,
-                            cuda_diagnostics diagnostics, ttx_publication* output);
+  ttx_data_status (*compile)(
+      const void* source,
+      cuda_compile_request request,
+      cuda_diagnostics diagnostics,
+      ttx_publication* output);
 } cuda_compiler;
 
 // C consumers can request the same prepared API form as the C++ facade.

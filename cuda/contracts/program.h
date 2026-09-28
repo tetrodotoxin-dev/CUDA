@@ -5,8 +5,8 @@
 #define TTX_CUDA_CONTRACTS_PROGRAM_H
 
 #include "cuda/contracts/diagnostics.h"
-#include "ttx/semantic/ownership/publication.h"
 #include "ttx/data/form/representation.h"
+#include "ttx/semantic/ownership/publication.h"
 
 #define TTX_CUDA_PROGRAM_HIGH ((U64)0xc1bcf233d4104c0bULL)
 #define TTX_CUDA_PROGRAM_LOW ((U64)0x84f0529809175602ULL)
@@ -30,10 +30,16 @@ typedef struct cuda_argument {
 // lifetime, not concurrent access to a kernel's invocation scratch.
 typedef struct cuda_program {
   const void* source;
-  ttx_data_status (*prepare)(const void* source, perimortem_view_bytes entry,
-      const ttx_representation* frame, const cuda_argument* arguments, Count count,
-      cuda_diagnostics diagnostics, ttx_publication* output);
-  ttx_data_status (*allocate)(const void* source, Count size, ttx_publication* output);
+  ttx_data_status (*prepare)(
+      const void* source,
+      perimortem_view_bytes entry,
+      const ttx_representation* frame,
+      const cuda_argument* arguments,
+      Count count,
+      cuda_diagnostics diagnostics,
+      ttx_publication* output);
+  ttx_data_status (
+      *allocate)(const void* source, Count size, ttx_publication* output);
 } cuda_program;
 
 // C consumers can request the same prepared API form as the C++ facade.

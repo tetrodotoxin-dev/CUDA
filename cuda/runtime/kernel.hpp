@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "perimortem/memory/dynamic/bytes.hpp"
 #include "perimortem/memory/dynamic/vector.hpp"
 
 #include "cuda/contracts/kernel.hpp"
@@ -32,9 +33,9 @@ class Kernel {
       const ttx_representation& frame,
       Perimortem::Memory::Dynamic::Vector<Count> offsets);
   ~Kernel();
-  // The bound thunk uses this owner's reusable argument scratch and retained
-  // context. Keeping launch beside that private state makes the serialized
-  // lifetime requirement visible without another public execution surface.
+  // Invocations share the prepared argument pointers. The caller serializes
+  // access while each launch keeps the Program's context current through
+  // completion.
   auto launch(cuda_launch geometry, ttx_storage arguments) const
       -> ttx_data_status;
   Program& program;

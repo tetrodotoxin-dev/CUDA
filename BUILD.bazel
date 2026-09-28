@@ -1,0 +1,30 @@
+# # Tetrodotoxin
+# Copyright (c) 2023-present Matt Kaes and contributors
+
+load("//build:release.bzl", "sdk_release")
+
+sdk_release(
+    name = "release",
+    headers = [
+        "//cuda/contracts:public_headers",
+        "//cuda/runtime:public_headers",
+    ],
+    library = "//cuda:plugin",
+    scripts = [".vscode/format.sh"],
+    sources = glob([
+        ".bazelrc",
+        ".bazelversion",
+        ".clang-format",
+        ".gitignore",
+        "*.md",
+        "BUILD.bazel",
+        "LICENSE",
+        "MODULE.bazel",
+    ]) + [
+        "//build:sources",
+        "//cuda:sources",
+        "//cuda/contracts:sources",
+        "//cuda/runtime:sources",
+        "//validation:sources",
+    ],
+)

@@ -29,7 +29,9 @@ PERIMORTEM_C __attribute__((visibility("default"))) ttx_data_status
     ttx_module_open(ttx_semantic_query, ttx_module_acquisition* output) {
   static const Compiler compiler;
   *output = {
-    Ttx::Concept::Abstract::provide(compiler).get_abi(), nullptr,
-    [](const void*) {}};
+    Ttx::Concept::Abstract::provide(compiler).get_abi(),
+    nullptr,
+    [](const void*) {},
+  };
   return TTX_DATA_SUCCESS;
 }

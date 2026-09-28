@@ -35,18 +35,27 @@ class Program {
       Perimortem::Core::View::Vector<cuda_argument> arguments,
       Perimortem::Memory::Dynamic::Bytes& errors) const -> Perimortem::Utility::
       Result<Ttx::Semantic::Ownership::Publication, Ttx::Data::Status> {
-    errors.clear();
     ttx_publication output = {};
 
     const cuda_diagnostics sink = {
-      &errors, [](void* source, perimortem_view_bytes text) {
+      &errors,
+      [](void* source, perimortem_view_bytes text) {
         *static_cast<Perimortem::Memory::Dynamic::Bytes*>(source) =
-            Perimortem::Memory::Dynamic::Bytes({text.data, text.size});
-      }};
+            Perimortem::Memory::Dynamic::Bytes({
+              text.data,
+              text.size,
+            });
+      },
+    };
+    errors.clear();
 
     const auto status = api.prepare(
-        api.source, {entry.get_data(), entry.get_size()}, &frame,
-        arguments.get_data(), arguments.get_size(), sink, &output);
+        api.source,
+        {
+          entry.get_data(),
+          entry.get_size(),
+        },
+        &frame, arguments.get_data(), arguments.get_size(), sink, &output);
     if (status != TTX_DATA_SUCCESS) {
       return static_cast<Ttx::Data::Status>(status);
     }
