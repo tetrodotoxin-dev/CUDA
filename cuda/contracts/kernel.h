@@ -2,6 +2,8 @@
 // Copyright (c) 2023-present Matt Kaes and contributors
 
 #ifndef TTX_CUDA_CONTRACTS_KERNEL_H
+#include "ttx/concept/policies/borrowed.h"
+
 #define TTX_CUDA_CONTRACTS_KERNEL_H
 
 #include "ttx/data/form/storage.h"
@@ -23,9 +25,14 @@ typedef struct cuda_launch {
 
 typedef struct cuda_kernel {
   const void* source;
+  const struct cuda_kernel_ops* operations;
+} cuda_kernel;
+
+typedef struct cuda_kernel_ops {
+  ttx_abstract_ops abstract;
   ttx_data_status (
       *launch)(const void* source, cuda_launch geometry, ttx_storage arguments);
-} cuda_kernel;
+} cuda_kernel_ops;
 
 // C consumers can request the same prepared API form as the C++ facade.
 PERIMORTEM_C const ttx_representation* cuda_kernel_representation(void);

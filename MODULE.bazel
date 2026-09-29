@@ -1,21 +1,20 @@
 module(
     name = "ttx_cuda",
-    version = "0.1.0",
+    version = "0.2.0",
 )
 
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_pkg", version = "1.3.0")
 
-cuda_repository = use_repo_rule("//build:sdk.bzl", "cuda_repository")
+cuda = use_extension("//build:sdk.bzl", "dependencies")
+use_repo(cuda, "cuda_cudart_linux", "cuda_cudart_windows", "cuda_nvrtc_linux", "cuda_nvrtc_windows", "libcufft_linux", "libcufft_windows")
 
-cuda_repository(name = "cuda_sdk")
-
-bazel_dep(name = "tetro_toolchain", version = "0.2.0")
+bazel_dep(name = "tetro_toolchain", version = "0.2.1")
 archive_override(
     module_name = "tetro_toolchain",
-    sha256 = "83a4075e4fc96d53ca68319a6dd004d2f784ba8cd221f6c6a11126fb31e85085",
-    urls = ["https://github.com/tetrodotoxin-dev/Toolchain/releases/download/v0.2.0/tetro_toolchain-0.2.0-source.tar.gz"],
+    sha256 = "eea7461fb783d2b87a638c4ce1c8d9cbee73e54c90259516ca73cd7e850bdc0f",
+    urls = ["https://github.com/tetrodotoxin-dev/Toolchain/releases/download/v0.2.1/tetro_toolchain-0.2.1-source.tar.gz"],
 )
 
 register_toolchains("@tetro_toolchain//:cc_toolchain_for_linux_x86_64", "@tetro_toolchain//:cc_toolchain_for_wasm32", "@tetro_toolchain//:cc_toolchain_for_windows_x64")
@@ -38,13 +37,13 @@ use_repo(sdks, "perimortem")
 sdks.release(
     name = "ttx",
     archives = {
-        "headers": "05a389c9cc3a2a896614c0c8776778bec8e68ed801cd0c5d1796b147c534ee61",
-        "linux-x86_64-v3": "7603d82082c5c1f9865b3416d5cc003655408eeaea399481dac80849f59e4526",
-        "windows-x86_64-msvc": "f4975cf5e3a3b13b20069bedd47794a4580d76f3c40f0ea4ff5e7f7855c785d3",
-        "wasm32-emscripten": "f7f1cc60e84b84bec11578a0bb3154a063f54e9736ca51fc6327d08f081afdf1",
+        "headers": "b29fc0774de7631a94042a9fc0f08e8a537366b380403d714133ee014bdaedfa",
+        "linux-x86_64-v3": "0214ef3b44b52ec10c1c112d62feb4656771f0d8886303756ec47b847e3489cb",
+        "windows-x86_64-msvc": "2058106e0a0458f6ed322b9288ad0ed6f3d57f550b64bc7c342e6bbc526a8346",
+        "wasm32-emscripten": "997213f7564763ca5a496804d62b41b494515ae8a6adee91739b5bd64d7ee699",
     },
     project = "TTX",
-    version = "0.1.0",
+    version = "0.2.0",
     deps = ["@perimortem"],
 )
 use_repo(sdks, "ttx")

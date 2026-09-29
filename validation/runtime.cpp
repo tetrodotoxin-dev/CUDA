@@ -12,7 +12,8 @@
 #include "cuda/contracts/compiler.hpp"
 #include "cuda/contracts/kernel.hpp"
 #include "cuda/contracts/program.hpp"
-#include "ttx/concept/modules/module.hpp"
+#include "ttx/concept/policies/borrowed.hpp"
+#include "ttx/semantic/negotiation/library.hpp"
 
 using namespace Perimortem;
 using namespace Ttx;
@@ -70,18 +71,27 @@ int main(int argc, char** argv) {
 
   Memory::Allocator::Arena errors;
   auto module = accepted(
-      Concept::Modules::Module::load(
+      Semantic::Negotiation::Library::open(
           Core::NullTerminated::to_view(argv[1]), errors));
-  auto discovery = accepted(module.open());
+  Core::Option<Compiler> selected;
+  auto receive = [&](Semantic::Negotiation::Query query) {
+    require(
+        query.supports<Compiler>() ==
+            Semantic::Negotiation::Binding::Status::Satisfied,
+        "Compiler support declined the public contract."_view);
+    selected = accepted(query.bind<Compiler>());
+    return Semantic::Negotiation::Binding::Status::Satisfied;
+  };
   require(
-      discovery.supports<Compiler>() ==
+      module.visit(
+          Semantic::Negotiation::Query(),
+          Semantic::Negotiation::Receiver(receive)) ==
           Semantic::Negotiation::Binding::Status::Satisfied,
-      "Compiler support initialized or declined the device capability."_view);
-  auto compiler = accepted(discovery.bind<Compiler>());
-  discovery.close();
+      "Compiler entry failed."_view);
+  auto compiler = *selected;
 
-  // This source and its include come from the consumer. The provider has no
-  // built in knowledge of these kernels, parameter count or aggregate type.
+  // The consumer supplies this source and include. Compilation and argument
+  // agreement exercise kernels and aggregate types selected by that consumer.
   constexpr auto header =
       "struct Parameters { float scale; unsigned bias; };"_view;
   constexpr auto source = R"CUDA(
@@ -94,45 +104,43 @@ extern "C" __global__ void transform(float* out, const float* in, unsigned count
 
 extern "C" __global__ void empty() {}
 )CUDA"_view;
-  const cuda_source include{
-    {
-      reinterpret_cast<const U8*>("parameters.cuh"),
-      14,
-    },
-    {
-      header.get_data(),
-      header.get_size(),
-    },
-  };
+  const cuda_source include = cuda_source(
+      {
+        reinterpret_cast<const U8*>("parameters.cuh"),
+        14,
+      },
+      {
+        header.get_data(),
+        header.get_size(),
+      });
 
-  const cuda_compile_request request{
-    {
+  const cuda_compile_request request = cuda_compile_request(
       {
-        reinterpret_cast<const U8*>("project.cu"),
-        10,
+        {
+          reinterpret_cast<const U8*>("project.cu"),
+          10,
+        },
+        {
+          source.get_data(),
+          source.get_size(),
+        },
       },
-      {
-        source.get_data(),
-        source.get_size(),
-      },
-    },
-    &include,
-    1,
-    nullptr,
-    0,
-    0,
-  };
+      &include, 1, nullptr, 0, 0);
 
   Memory::Dynamic::Bytes diagnostic;
   const auto compilation_started = Core::Time::now();
   auto program_owner = accepted(compiler.compile(request, diagnostic));
   const auto compilation_ns =
       compilation_started.measure().convert_to_nanoseconds();
-  auto program = accepted(program_owner.get_query().bind<Program>());
+  auto program = accepted(program_owner.bind<Program>());
   auto input_owner = accepted(program.allocate(4 * sizeof(R32)));
   auto output_owner = accepted(program.allocate(4 * sizeof(R32)));
-  auto input = accepted(input_owner.get_query().bind<Buffer>());
-  auto output = accepted(output_owner.get_query().bind<Buffer>());
+  auto input = accepted(input_owner.bind<Buffer>());
+  auto output = accepted(output_owner.bind<Buffer>());
+  require(
+      input.supports<Concept::Policies::Borrowed>() ==
+          Semantic::Negotiation::Binding::Status::Satisfied,
+      "Buffer binding lost its borrowing policy."_view);
   const Core::Static::Vector<R32, 4> values = {
     {
       1,
@@ -161,10 +169,7 @@ extern "C" __global__ void empty() {}
 
   const Core::Static::Vector<cuda_argument, 5> parameters = {
     {
-      cuda_argument{
-        __builtin_offsetof(Arguments, output),
-        &form<U64>(),
-      },
+      cuda_argument(__builtin_offsetof(Arguments, output), &form<U64>()),
       {
         __builtin_offsetof(Arguments, input),
         &form<U64>(),
@@ -189,44 +194,36 @@ extern "C" __global__ void empty() {}
       "transform"_view, form<Arguments>(), parameters.get_view(), diagnostic));
   const auto preparation_ns =
       preparation_started.measure().convert_to_nanoseconds();
-  auto kernel = accepted(kernel_owner.get_query().bind<Kernel>());
+  auto kernel = accepted(kernel_owner.bind<Kernel>());
+  auto status_of =
+      [](Utility::Result<Concept::Policies::Borrowed, Data::Status> result) {
+        return result.visit(
+            [](Concept::Policies::Borrowed acquired) {
+              acquired.release();
+              return Data::Status::Success;
+            },
+            [](Data::Status status) { return status; });
+      };
   auto wrong = parameters;
   wrong[2].representation = &form<U64>();
   require(
-      program
-          .prepare(
-              "transform"_view, form<Arguments>(), wrong.get_view(), diagnostic)
-          .visit(
-              [](auto&) { return False; },
-              [](Data::Status status) {
-                return Bool(status == Data::Status::Incompatible);
-              }),
+      status_of(program.prepare(
+          "transform"_view, form<Arguments>(), wrong.get_view(), diagnostic)) ==
+          Data::Status::Incompatible,
       "Wrong parameter extent was accepted."_view);
   require(
-      program
-          .prepare(
-              "absent"_view, form<Arguments>(), parameters.get_view(),
-              diagnostic)
-          .visit(
-              [](auto&) { return False; },
-              [](Data::Status status) {
-                return Bool(status == Data::Status::Unsupported);
-              }),
+      status_of(program.prepare(
+          "absent"_view, form<Arguments>(), parameters.get_view(),
+          diagnostic)) == Data::Status::Unsupported,
       "Unknown entry was accepted."_view);
   require(
-      program
-          .prepare(
-              "transform"_view, form<Arguments>(), parameters.slice(0, 4),
-              diagnostic)
-          .visit(
-              [](auto&) { return False; },
-              [](Data::Status status) {
-                return Bool(status == Data::Status::Incompatible);
-              }),
+      status_of(program.prepare(
+          "transform"_view, form<Arguments>(), parameters.slice(0, 4),
+          diagnostic)) == Data::Status::Incompatible,
       "Wrong argument count was accepted."_view);
 
-  // Failed compilation cannot replace a previously published program. Kernel
-  // and buffer publications then outlive the original Program and discovery.
+  // A failed compilation leaves the accepted program available. Returning
+  // that program then exercises the kernel and buffers' independent lifetimes.
   constexpr auto broken = "this is not CUDA source"_view;
   auto invalid = request;
   invalid.source.text = {
@@ -235,36 +232,23 @@ extern "C" __global__ void empty() {}
   };
 
   require(
-      compiler.compile(invalid, diagnostic)
-          .visit(
-              [](auto&) { return False; },
-              [](Data::Status status) {
-                return Bool(status == Data::Status::Invalid);
-              }),
+      status_of(compiler.compile(invalid, diagnostic)) == Data::Status::Invalid,
       "Invalid source compiled."_view);
   require(
       !diagnostic.is_empty(), "Compilation lost the source diagnostic."_view);
-  program_owner.close();
+  program_owner.release();
 
-  Arguments frame{
-    output.get_address(),
-    input.get_address(),
-    4,
-    {
-      2.0f,
-      3,
-    },
-    0.5,
-  };
+  Arguments frame = Arguments(
+      output.get_address(), input.get_address(), 4,
+      {
+        2.0f,
+        3,
+      },
+      0.5);
 
-  const Data::Form::Storage storage({
-    &form<Arguments>(),
-    reinterpret_cast<U8*>(&frame),
-    sizeof(frame),
-  });
-  const cuda_launch geometry{
-    1, 1, 1, 32, 1, 1, 0,
-  };
+  const Data::Form::Storage storage(ttx_storage(
+      &form<Arguments>(), reinterpret_cast<U8*>(&frame), sizeof(frame)));
+  const cuda_launch geometry = cuda_launch(1, 1, 1, 32, 1, 1, 0);
 
   require(
       kernel.launch(geometry, storage) == Data::Status::Success,
@@ -288,11 +272,9 @@ extern "C" __global__ void empty() {}
   U32 unrelated = 0;
   require(
       kernel.launch(
-          geometry, Data::Form::Storage({
-                      &form<U32>(),
-                      reinterpret_cast<U8*>(&unrelated),
-                      sizeof(unrelated),
-                    })) == Data::Status::Incompatible,
+          geometry, Data::Form::Storage(ttx_storage(
+                        &form<U32>(), reinterpret_cast<U8*>(&unrelated),
+                        sizeof(unrelated)))) == Data::Status::Incompatible,
       "A different input frame bypassed agreement."_view);
 
   const auto allocations = Core::Bibliotheca::check_out_requests();
@@ -317,4 +299,7 @@ extern "C" __global__ void empty() {}
   Core::Diagnostics::Log::info(Core::View::Bytes(writer));
   Core::Diagnostics::Log::info(
       "PASS project CUDA: source includes, general arguments, POD, diagnostics, ownership and retained launches\n"_view);
+  kernel_owner.release();
+  output_owner.release();
+  input_owner.release();
 }

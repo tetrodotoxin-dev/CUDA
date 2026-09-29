@@ -6,6 +6,7 @@
 #include "perimortem/core/null_terminated.hpp"
 
 #include "cuda/runtime/current_context.hpp"
+#include "ttx/concept/capabilities/borrow.hpp"
 
 using namespace Perimortem;
 using namespace Cuda;
@@ -36,7 +37,7 @@ auto Runtime::Kernel::prepare(
     const cuda_argument* parameters,
     Count count,
     cuda_diagnostics diagnostics,
-    ttx_publication* output) -> ttx_data_status {
+    ttx_borrowed* output) -> ttx_data_status {
   CurrentContext current(program.get_context());
   if (current.status != CUDA_SUCCESS) {
     return TTX_DATA_IO_ERROR;
@@ -126,14 +127,7 @@ auto Runtime::Kernel::prepare(
   auto memory = Core::Object<>::create(descriptor).get_payload();
   auto* kernel = new (memory, Core::Placement::Construct)
       Kernel(program, function, frame, Core::Data::take(offsets));
-  *output = {
-    kernel->get_query(),
-    [](const void* source) {
-      Core::Object<>(reinterpret_cast<U8*>(const_cast<void*>(source)))
-          .release();
-    },
-  };
-
+  *output = Ttx::Concept::Policies::Borrowed::provide(*kernel).get_abi();
   return TTX_DATA_SUCCESS;
 }
 
@@ -174,30 +168,47 @@ auto Runtime::Kernel::launch(cuda_launch geometry, ttx_storage supplied) const
 }
 
 auto Runtime::Kernel::get_query() const -> ttx_semantic_query {
-  return {
-    this,
-    [](const void* source, perimortem_uuid id,
-       ttx_storage requested) -> ttx_binding_status {
-      if (System::Uuid(id) != Cuda::Contracts::Kernel::contract_id) {
-        return TTX_BINDING_UNSUPPORTED;
-      }
+  return Ttx::Concept::Abstract::provide(*this).get_query();
+}
 
-      const cuda_kernel api{
-        source,
-        [](const void* source, cuda_launch geometry, ttx_storage arguments) {
-          return static_cast<const Kernel*>(source)->launch(
-              geometry, arguments);
-        },
-      };
+auto Runtime::Kernel::supports(System::Uuid id) const -> Binding::Status {
+  return id == Ttx::Concept::Capabilities::Borrow::contract_id ||
+                 id == Ttx::Concept::Policies::Borrowed::contract_id ||
+                 id == Contracts::Kernel::contract_id
+             ? Binding::Status::Satisfied
+             : Binding::Status::Unknown;
+}
 
-      return static_cast<ttx_binding_status>(
-          Binding::provide<Cuda::Contracts::Kernel>(
-              api, Ttx::Data::Form::Storage(requested)));
-    },
-    [](const void*, perimortem_uuid id) -> ttx_binding_status {
-      return System::Uuid(id) == Cuda::Contracts::Kernel::contract_id
-                 ? TTX_BINDING_SATISFIED
-                 : TTX_BINDING_UNSUPPORTED;
-    },
-  };
+auto Runtime::Kernel::borrow() const
+    -> Utility::Result<Ttx::Concept::Policies::Borrowed, Binding::Failure> {
+  Core::Object<>(reinterpret_cast<U8*>(const_cast<Kernel*>(this))).retain();
+  return Ttx::Concept::Policies::Borrowed::provide(*this);
+}
+
+auto Runtime::Kernel::bind_interface(
+    System::Uuid id,
+    Ttx::Data::Form::Storage requested) const -> Binding::Status {
+  using namespace Ttx::Concept;
+  if (id == Capabilities::Borrow::contract_id) {
+    return Binding::provide<Capabilities::Borrow>(
+        Capabilities::Borrow::provide(*this).get_abi(), requested);
+  }
+  if (id == Policies::Borrowed::contract_id) {
+    return Binding::provide<Policies::Borrowed>(
+        Policies::Borrowed::provide(*this).get_abi(), requested);
+  }
+  if (id != Contracts::Kernel::contract_id) {
+    return Binding::Status::Unknown;
+  }
+  static const cuda_kernel_ops operations = cuda_kernel_ops(
+      *Abstract::provide(*this).get_abi().operations,
+      [](const void* source, cuda_launch geometry, ttx_storage arguments) {
+        return static_cast<const Kernel*>(source)->launch(geometry, arguments);
+      });
+  return Binding::provide<Contracts::Kernel>(
+      cuda_kernel(this, &operations), requested);
+}
+
+void Runtime::Kernel::release() const {
+  Core::Object<>(reinterpret_cast<U8*>(const_cast<Kernel*>(this))).release();
 }

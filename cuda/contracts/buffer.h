@@ -2,6 +2,8 @@
 // Copyright (c) 2023-present Matt Kaes and contributors
 
 #ifndef TTX_CUDA_CONTRACTS_BUFFER_H
+#include "ttx/concept/policies/borrowed.h"
+
 #define TTX_CUDA_CONTRACTS_BUFFER_H
 
 #include "perimortem/core/view/bytes.h"
@@ -18,13 +20,18 @@
 // and write finish before returning and borrow host bytes only for that call.
 typedef struct cuda_buffer {
   const void* source;
+  const struct cuda_buffer_ops* operations;
+} cuda_buffer;
+
+typedef struct cuda_buffer_ops {
+  ttx_abstract_ops abstract;
   U64 (*address)(const void* source);
   Count (*size)(const void* source);
   ttx_data_status (
       *read)(const void* source, Count offset, U8* output, Count size);
   ttx_data_status (
       *write)(const void* source, Count offset, perimortem_view_bytes input);
-} cuda_buffer;
+} cuda_buffer_ops;
 
 // C consumers can request the same prepared API form as the C++ facade.
 PERIMORTEM_C const ttx_representation* cuda_buffer_representation(void);

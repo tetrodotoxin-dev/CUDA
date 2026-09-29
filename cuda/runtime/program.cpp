@@ -15,6 +15,7 @@
 #include "cuda/runtime/buffer.hpp"
 #include "cuda/runtime/current_context.hpp"
 #include "cuda/runtime/kernel.hpp"
+#include "ttx/concept/capabilities/borrow.hpp"
 
 using namespace Perimortem;
 using namespace Cuda;
@@ -202,18 +203,12 @@ auto Runtime::Program::create(
 auto Runtime::Program::compile(
     cuda_compile_request request,
     cuda_diagnostics diagnostics,
-    ttx_publication* output) -> ttx_data_status {
+    ttx_borrowed* output) -> ttx_data_status {
   return create(request, diagnostics)
       .visit(
           [&](Program& result) -> ttx_data_status {
-            *output = {
-              result.get_query(),
-              [](const void* source) {
-                const_cast<Program*>(static_cast<const Program*>(source))
-                    ->release();
-              },
-            };
-
+            *output =
+                Ttx::Concept::Policies::Borrowed::provide(result).get_abi();
             return TTX_DATA_SUCCESS;
           },
           [](Ttx::Data::Status status) {
@@ -221,78 +216,108 @@ auto Runtime::Program::compile(
           });
 }
 
-auto Runtime::Program::compiler() -> Ttx::Semantic::Negotiation::Query {
-  return Query({
-    nullptr,
-    [](const void*, perimortem_uuid id,
-       ttx_storage requested) -> ttx_binding_status {
-      if (System::Uuid(id) != Cuda::Contracts::Compiler::contract_id) {
-        return TTX_BINDING_UNSUPPORTED;
-      }
-
-      const cuda_compiler api{
-        nullptr,
+class CompilerProvider {
+ public:
+  auto get_data() const -> Core::View::Bytes { return Core::View::Bytes(); }
+  auto supports(System::Uuid id) const -> Binding::Status {
+    return id == Contracts::Compiler::contract_id ||
+                   id == Ttx::Concept::Capabilities::Borrow::contract_id ||
+                   id == Ttx::Concept::Policies::Borrowed::contract_id
+               ? Binding::Status::Satisfied
+               : Binding::Status::Unknown;
+  }
+  auto release() const -> void {}
+  auto borrow() const
+      -> Utility::Result<Ttx::Concept::Policies::Borrowed, Binding::Failure> {
+    return Ttx::Concept::Policies::Borrowed::provide(*this);
+  }
+  auto bind_interface(System::Uuid id, Ttx::Data::Form::Storage requested) const
+      -> Binding::Status {
+    using namespace Ttx::Concept;
+    if (id == Capabilities::Borrow::contract_id) {
+      return Binding::provide<Capabilities::Borrow>(
+          Capabilities::Borrow::provide(*this).get_abi(), requested);
+    }
+    if (id == Policies::Borrowed::contract_id) {
+      return Binding::provide<Policies::Borrowed>(
+          Policies::Borrowed::provide(*this).get_abi(), requested);
+    }
+    if (id != Contracts::Compiler::contract_id) {
+      return Binding::Status::Unknown;
+    }
+    static const cuda_compiler_ops operations = cuda_compiler_ops(
+        *Abstract::provide(*this).get_abi().operations,
         [](const void*, cuda_compile_request request, cuda_diagnostics errors,
-           ttx_publication* output) {
-          return compile(request, errors, output);
-        },
-      };
+           ttx_borrowed* output) {
+          return Runtime::Program::compile(request, errors, output);
+        });
+    return Binding::provide<Contracts::Compiler>(
+        {this, &operations}, requested);
+  }
+};
 
-      return static_cast<ttx_binding_status>(
-          Binding::provide<Cuda::Contracts::Compiler>(
-              api, Ttx::Data::Form::Storage(requested)));
-    },
-    [](const void*, perimortem_uuid id) -> ttx_binding_status {
-      return System::Uuid(id) == Cuda::Contracts::Compiler::contract_id
-                 ? TTX_BINDING_SATISFIED
-                 : TTX_BINDING_UNSUPPORTED;
-    },
-  });
+auto Runtime::Program::compiler() -> Ttx::Semantic::Negotiation::Query {
+  static const CompilerProvider compiler;
+  return Ttx::Concept::Abstract::provide(compiler).get_query();
 }
 
 auto Runtime::Program::get_query() const -> ttx_semantic_query {
-  return {
-    this,
-    [](const void* source, perimortem_uuid id,
-       ttx_storage requested) -> ttx_binding_status {
-      if (System::Uuid(id) != Cuda::Contracts::Program::contract_id) {
-        return TTX_BINDING_UNSUPPORTED;
-      }
+  return Ttx::Concept::Abstract::provide(*this).get_query();
+}
 
-      const cuda_program api{
-        source,
-        [](const void* source, perimortem_view_bytes entry,
-           const ttx_representation* frame, const cuda_argument* arguments,
-           Count count, cuda_diagnostics errors, ttx_publication* output) {
-          return Kernel::prepare(
-              *const_cast<Program*>(static_cast<const Program*>(source)), entry,
-              *frame, arguments, count, errors, output);
-        },
-        [](const void* source, Count size, ttx_publication* output) {
-          return Buffer::allocate(
-              *const_cast<Program*>(static_cast<const Program*>(source)), size,
-              output);
-        },
-      };
+auto Runtime::Program::supports(System::Uuid id) const -> Binding::Status {
+  return id == Ttx::Concept::Capabilities::Borrow::contract_id ||
+                 id == Ttx::Concept::Policies::Borrowed::contract_id ||
+                 id == Contracts::Program::contract_id
+             ? Binding::Status::Satisfied
+             : Binding::Status::Unknown;
+}
 
-      return static_cast<ttx_binding_status>(
-          Binding::provide<Cuda::Contracts::Program>(
-              api, Ttx::Data::Form::Storage(requested)));
-    },
-    [](const void*, perimortem_uuid id) -> ttx_binding_status {
-      return System::Uuid(id) == Cuda::Contracts::Program::contract_id
-                 ? TTX_BINDING_SATISFIED
-                 : TTX_BINDING_UNSUPPORTED;
-    },
-  };
+auto Runtime::Program::borrow() const
+    -> Utility::Result<Ttx::Concept::Policies::Borrowed, Binding::Failure> {
+  Core::Object<>(reinterpret_cast<U8*>(const_cast<Program*>(this))).retain();
+  return Ttx::Concept::Policies::Borrowed::provide(*this);
+}
+
+auto Runtime::Program::bind_interface(
+    System::Uuid id,
+    Ttx::Data::Form::Storage requested) const -> Binding::Status {
+  using namespace Ttx::Concept;
+  if (id == Capabilities::Borrow::contract_id) {
+    return Binding::provide<Capabilities::Borrow>(
+        Capabilities::Borrow::provide(*this).get_abi(), requested);
+  }
+  if (id == Policies::Borrowed::contract_id) {
+    return Binding::provide<Policies::Borrowed>(
+        Policies::Borrowed::provide(*this).get_abi(), requested);
+  }
+  if (id != Contracts::Program::contract_id) {
+    return Binding::Status::Unknown;
+  }
+  static const cuda_program_ops operations = cuda_program_ops(
+      *Abstract::provide(*this).get_abi().operations,
+      [](const void* source, perimortem_view_bytes entry,
+         const ttx_representation* frame, const cuda_argument* arguments,
+         Count count, cuda_diagnostics errors, ttx_borrowed* output) {
+        return Kernel::prepare(
+            *const_cast<Program*>(static_cast<const Program*>(source)), entry,
+            *frame, arguments, count, errors, output);
+      },
+      [](const void* source, Count size, ttx_borrowed* output) {
+        return Buffer::allocate(
+            *const_cast<Program*>(static_cast<const Program*>(source)), size,
+            output);
+      });
+  return Binding::provide<Contracts::Program>(
+      cuda_program(this, &operations), requested);
 }
 
 void Runtime::Program::retain() {
   Core::Object<>(reinterpret_cast<U8*>(this)).retain();
 }
 
-void Runtime::Program::release() {
-  Core::Object<>(reinterpret_cast<U8*>(this)).release();
+void Runtime::Program::release() const {
+  Core::Object<>(reinterpret_cast<U8*>(const_cast<Program*>(this))).release();
 }
 
 Runtime::Program::~Program() {

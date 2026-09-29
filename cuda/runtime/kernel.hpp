@@ -23,8 +23,21 @@ class Kernel {
       const cuda_argument* arguments,
       Count count,
       cuda_diagnostics diagnostics,
-      ttx_publication* output) -> ttx_data_status;
+      ttx_borrowed* output) -> ttx_data_status;
   auto get_query() const -> ttx_semantic_query;
+  auto get_data() const -> Perimortem::Core::View::Bytes {
+    return Perimortem::Core::View::Bytes();
+  }
+  auto supports(Perimortem::System::Uuid id) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto bind_interface(
+      Perimortem::System::Uuid id,
+      Ttx::Data::Form::Storage target) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto borrow() const -> Perimortem::Utility::Result<
+      Ttx::Concept::Policies::Borrowed,
+      Ttx::Semantic::Negotiation::Binding::Failure>;
+  auto release() const -> void;
 
  private:
   Kernel(

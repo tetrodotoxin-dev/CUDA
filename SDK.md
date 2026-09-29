@@ -1,31 +1,34 @@
 # Using the CUDA SDK
 
-The [0.1.0 release](https://github.com/tetrodotoxin-dev/CUDA/releases/tag/v0.1.0)
-contains public headers and `libttx_cuda.so` for Linux x86-64-v3 with RDRAND.
+The [0.2.0 release](https://github.com/tetrodotoxin-dev/CUDA/releases/tag/v0.2.0)
+contains public headers, `libttx_cuda.so` for Linux x86-64-v3 with RDRAND, and
+`ttx_cuda.dll` with its import library for Windows x64 with the MSVC ABI.
 Consumers download these archives and the TTX and Perimortem SDKs. They do not
 need this repository or a CUDA library build.
 
-The binary requires glibc 2.34 or later, libstdc++, NVIDIA's driver and NVRTC 13.
+The Linux binary requires glibc 2.34 or later, libstdc++, NVIDIA's driver and
+NVRTC 13.3 with its matching builtins library. Windows requires the NVIDIA driver
+and the corresponding NVRTC and builtins DLLs.
 The driver must support the installed NVRTC and the selected GPU. NVIDIA's
-libraries remain separate runtime dependencies. The SDK was built with CUDA
+libraries remain separate runtime dependencies. The Linux SDK was built with CUDA
 13.3 and tested with driver 610.57.04 on an RTX 5070.
 
 ## Bazel
 
 Use Bazel 9.2.0 and Python 3. This complete `MODULE.bazel` imports the published
-Linux SDKs through Toolchain 0.2.0:
+native SDKs through Toolchain 0.2.1:
 
 ```starlark
 module(name = "cuda_consumer", version = "0.1.0")
 
 bazel_dep(name = "rules_cc", version = "0.2.17")
-bazel_dep(name = "tetro_toolchain", version = "0.2.0")
+bazel_dep(name = "tetro_toolchain", version = "0.2.1")
 archive_override(
     module_name = "tetro_toolchain",
-    sha256 = "83a4075e4fc96d53ca68319a6dd004d2f784ba8cd221f6c6a11126fb31e85085",
-    urls = ["https://github.com/tetrodotoxin-dev/Toolchain/releases/download/v0.2.0/tetro_toolchain-0.2.0-source.tar.gz"],
+    sha256 = "eea7461fb783d2b87a638c4ce1c8d9cbee73e54c90259516ca73cd7e850bdc0f",
+    urls = ["https://github.com/tetrodotoxin-dev/Toolchain/releases/download/v0.2.1/tetro_toolchain-0.2.1-source.tar.gz"],
 )
-register_toolchains("@tetro_toolchain//:cc_toolchain_for_linux_x86_64")
+register_toolchains("@tetro_toolchain//:cc_toolchain_for_linux_x86_64", "@tetro_toolchain//:cc_toolchain_for_windows_x64")
 
 sdks = use_extension("@tetro_toolchain//:sdk.bzl", "dependencies")
 sdks.release(
@@ -35,6 +38,7 @@ sdks.release(
     archives = {
         "headers": "2bb19a82ceb2dd06a122fb51142e96fd13d52fd5ed323b8a662cb640082636ed",
         "linux-x86_64-v3": "f62c3b71c9c5f554467c9dc03237073fc34d670fa596aa9cd99972dabfb2e653",
+        "windows-x86_64-msvc": "543763f2a684bc410e264f60115a13cc92b20ae12ae25a9c5294c685f9d06d94",
     },
     deps = [],
 )
@@ -43,10 +47,11 @@ use_repo(sdks, "perimortem")
 sdks.release(
     name = "ttx",
     project = "TTX",
-    version = "0.1.0",
+    version = "0.2.0",
     archives = {
-        "headers": "05a389c9cc3a2a896614c0c8776778bec8e68ed801cd0c5d1796b147c534ee61",
-        "linux-x86_64-v3": "7603d82082c5c1f9865b3416d5cc003655408eeaea399481dac80849f59e4526",
+        "headers": "b29fc0774de7631a94042a9fc0f08e8a537366b380403d714133ee014bdaedfa",
+        "linux-x86_64-v3": "0214ef3b44b52ec10c1c112d62feb4656771f0d8886303756ec47b847e3489cb",
+        "windows-x86_64-msvc": "2058106e0a0458f6ed322b9288ad0ed6f3d57f550b64bc7c342e6bbc526a8346",
     },
     deps = ["@perimortem"],
 )
@@ -55,10 +60,11 @@ use_repo(sdks, "ttx")
 sdks.release(
     name = "ttx_cuda",
     project = "CUDA",
-    version = "0.1.0",
+    version = "0.2.0",
     archives = {
-        "headers": "87fb88ee048c6fa79d921e9b6bef28e6fb782705d86fb7f6f479e96b3888b10a",
-        "linux-x86_64-v3": "e7bafbc6ea81b950bd0cdb4afcbe54f462b5ab25478bb844a807f13a56a8fffc",
+        "headers": "1d69b3769617c8c013890b305a607da3ca4a315208422d0071cf7e209d2ec0ca",
+        "linux-x86_64-v3": "1fe135c07b70f4f814d2c512004dc369f70a69cfed41724eb0038620ff1701a6",
+        "windows-x86_64-msvc": "dc1067239cf96fa0e531fb7ccb372ab88094e5480fa268ca52f2b0d13d1eec91",
     },
     deps = ["@ttx"],
 )
@@ -98,10 +104,11 @@ compiler's include paths and `lib` to the linker paths. Link `ttx_cuda`, `ttx`
 and `perimortem`. The public C records and C++ contract facades require no NVIDIA
 headers.
 
-Ship `libttx_cuda.so`, `libttx.so` and `libperimortem.so` together. Arrange for the
-loader to find that directory through the application's runpath or
-`LD_LIBRARY_PATH`. Keep the corresponding SDK licenses with redistributed
-files. Install NVIDIA's driver and NVRTC separately and make their libraries
+Ship `libttx_cuda.so`, `libttx.so` and `libperimortem.so` together on Linux, or
+`ttx_cuda.dll`, `ttx.dll` and `perimortem.dll` on Windows. Arrange for the loader
+to find that directory through the application's runpath or `LD_LIBRARY_PATH`
+on Linux, or the application's directory or `PATH` on Windows. Keep the
+corresponding SDK licenses with redistributed files. Install NVIDIA's driver and NVRTC separately and make their libraries
 available to the loader. Bazel's local runfiles are not a deployment package.
 
 Native C++ callers may include `cuda/runtime/*.hpp` and link the same binary.
@@ -112,17 +119,20 @@ its own NVIDIA cuFFT dependency.
 
 ## Producing a release
 
-From a CUDA source checkout with the toolkit installed:
+From a CUDA source checkout:
 
 ```sh
 bazel build --config=release //:release
+bazel build --config=release --config=windows //:release
 bazel test --config=debug //validation:consumer //validation:runtime
 bazel test --config=release //validation:consumer //validation:runtime
 ```
 
 The release target writes `ttx_cuda-<version>-headers.zip`,
-`ttx_cuda-<version>-linux-x86_64-v3.zip` and
-`ttx_cuda-<version>-source.zip` beneath `.bin/bin`. The version comes from
+`ttx_cuda-<version>-source.zip` and the selected platform's binary archive beneath
+`.bin/bin`: `ttx_cuda-<version>-linux-x86_64-v3.zip` or
+`ttx_cuda-<version>-windows-x86_64-msvc.zip`. The version comes from
 `MODULE.bazel`. Publish those archives and their SHA-256 checksums under the
 matching `v<version>` tag. Headers retain their `include/cuda/` paths, and the
-binary archive contains `lib/libttx_cuda.so` with that same ELF library name.
+Linux binary archive contains `lib/libttx_cuda.so`. The Windows archive contains
+`lib/ttx_cuda.dll` and `lib/ttx_cuda.lib`.

@@ -5,8 +5,8 @@ contracts. Consumers supply source bytes, named includes and compiler options.
 NVRTC is used to compile provided source for the selected device on demand, with
 the resulting TTX Program owning the loaded code and a reference to its CUDA context.
 
-A Program prepares Kernels and allocates Buffers. Each has its own publication
-and retains the Program, so releasing the original Program publication leaves
+A Program prepares Kernels and allocates Buffers. Each is returned as a Borrowed answer
+and retains the Program, so releasing the original Program leaves
 existing kernels and allocations usable. Kernel arguments are described with
 TTX Data representations so preparation can check their sizes and placement against
 the loaded function and the caller's frame. The source author remains responsible
@@ -19,21 +19,22 @@ and launch geometry in the consuming project.
 
 ## TTX Compatability
 
-The module exports `ttx_module_open` and publishes a Compiler service for TTX `0.1`.
+The module exports `ttx_query` and publishes a Compiler service for TTX `0.2`.
 The public contracts use standard TTX C records and function pointers, with C++ interfaces
 over those records. Native callers can also use the runtime directly which saves the effort
 of negotiating the system's native ABI and calling convention.
 
-Publications are used serially on their owning worker, and the caller keeps the module
-loaded until all publications have been released. Launches and host transfers are guaranteed
+Borrowed answers are used serially on their owning worker, and the caller keeps the module
+loaded until all acquired answers have been released. Launches and host transfers are guaranteed
 to finish before returning.
 
 ## Building and testing
 
-The build targets Linux x86_64 with x86-64-v3 and RDRAND. Install Python 3, the
-Bazel version in [.bazelversion](.bazelversion), and a CUDA toolkit with NVRTC and
-driver headers. Bazel downloads the pinned LLVM tools, TTX and Perimortem SDKs.
-The toolkit defaults to `/opt/cuda`; set `CUDA_ROOT` to use another installation.
+The build targets Linux and Windows x86_64 with x86-64-v3 and RDRAND. Install
+Python 3 and the Bazel version in [.bazelversion](.bazelversion). Bazel downloads
+the pinned LLVM tools, target SDK, TTX and Perimortem SDKs, and NVIDIA's CUDA
+13.3 headers and libraries. The machine running GPU work supplies its NVIDIA
+driver.
 
 From the repository root:
 
@@ -43,10 +44,12 @@ bazel test --config=debug //validation:consumer //validation:runtime
 bazel test --config=release //validation:consumer //validation:runtime
 ```
 
-The plugin is written to `.bin/bin/cuda/libttx_cuda.so`. Running it requires NVRTC
-and the NVIDIA driver. The tests require a CUDA capable GPU and exercise both C
+The Linux plugin is written to `.bin/bin/cuda/libttx_cuda.so`. Add
+`--config=windows` to cross-build `ttx_cuda.dll` and its import library from Linux.
+The pinned NVRTC and builtins libraries are carried through the build's runtime
+dependencies. The tests require a CUDA capable GPU and exercise both C
 and C++ consumers, compilation diagnostics, argument agreement, buffer transfers
 and retained resource lifetimes.
 
 Native consumers use `//cuda/contracts` and `//cuda/runtime`. The optional
-`//build:fft` target supplies cuFFT for callers that need it.
+`//build:fft` target acquires cuFFT for callers that need it.

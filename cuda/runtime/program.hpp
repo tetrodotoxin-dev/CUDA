@@ -20,15 +20,27 @@ class Program {
   static auto compile(
       cuda_compile_request request,
       cuda_diagnostics diagnostics,
-      ttx_publication* output) -> ttx_data_status;
+      ttx_borrowed* output) -> ttx_data_status;
   static auto create(cuda_compile_request request, cuda_diagnostics diagnostics)
       -> Perimortem::Utility::Result<Program&, Ttx::Data::Status>;
   static auto compiler() -> Ttx::Semantic::Negotiation::Query;
   auto get_context() const -> CUcontext { return context; }
   auto get_module() const -> CUmodule { return module; }
   auto retain() -> void;
-  auto release() -> void;
+  auto release() const -> void;
   auto get_query() const -> ttx_semantic_query;
+  auto get_data() const -> Perimortem::Core::View::Bytes {
+    return Perimortem::Core::View::Bytes();
+  }
+  auto supports(Perimortem::System::Uuid id) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto bind_interface(
+      Perimortem::System::Uuid id,
+      Ttx::Data::Form::Storage target) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto borrow() const -> Perimortem::Utility::Result<
+      Ttx::Concept::Policies::Borrowed,
+      Ttx::Semantic::Negotiation::Binding::Failure>;
 
  private:
   Program() = default;

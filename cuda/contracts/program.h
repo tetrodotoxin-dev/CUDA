@@ -5,8 +5,8 @@
 #define TTX_CUDA_CONTRACTS_PROGRAM_H
 
 #include "cuda/contracts/diagnostics.h"
+#include "ttx/concept/policies/borrowed.h"
 #include "ttx/data/form/representation.h"
-#include "ttx/semantic/ownership/publication.h"
 
 #define TTX_CUDA_PROGRAM_HIGH ((U64)0xc1bcf233d4104c0bULL)
 #define TTX_CUDA_PROGRAM_LOW ((U64)0x84f0529809175602ULL)
@@ -22,14 +22,19 @@ typedef struct cuda_argument {
   const ttx_representation* representation;
 } cuda_argument;
 
-// Program keeps code and its CUDA context alive. Kernel preparation copies
-// descriptors and resolves the executable entry once. Buffer allocation and
-// Kernel preparation transfer independent publications retaining that program,
-// so closing the original Program cannot invalidate an outstanding operation.
-// Publications are used serially on their owning worker. Retention establishes
-// lifetime, not concurrent access to a kernel's invocation scratch.
+// Program keeps its code and CUDA context available. Kernel preparation copies
+// the parameter descriptions and resolves the executable entry once. Both
+// prepare and allocate return Borrowed answers with their own release
+// obligations, retaining the state needed after this Program is released.
+// Operations run serially on their owning worker because a kernel reuses its
+// invocation scratch.
 typedef struct cuda_program {
   const void* source;
+  const struct cuda_program_ops* operations;
+} cuda_program;
+
+typedef struct cuda_program_ops {
+  ttx_abstract_ops abstract;
   ttx_data_status (*prepare)(
       const void* source,
       perimortem_view_bytes entry,
@@ -37,10 +42,10 @@ typedef struct cuda_program {
       const cuda_argument* arguments,
       Count count,
       cuda_diagnostics diagnostics,
-      ttx_publication* output);
+      ttx_borrowed* output);
   ttx_data_status (
-      *allocate)(const void* source, Count size, ttx_publication* output);
-} cuda_program;
+      *allocate)(const void* source, Count size, ttx_borrowed* output);
+} cuda_program_ops;
 
 // C consumers can request the same prepared API form as the C++ facade.
 PERIMORTEM_C const ttx_representation* cuda_program_representation(void);

@@ -14,9 +14,22 @@ namespace Cuda::Runtime {
 // meaning.
 class Buffer {
  public:
-  static auto allocate(Program& program, Count size, ttx_publication* output)
+  static auto allocate(Program& program, Count size, ttx_borrowed* output)
       -> ttx_data_status;
   auto get_query() const -> ttx_semantic_query;
+  auto get_data() const -> Perimortem::Core::View::Bytes {
+    return Perimortem::Core::View::Bytes();
+  }
+  auto supports(Perimortem::System::Uuid id) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto bind_interface(
+      Perimortem::System::Uuid id,
+      Ttx::Data::Form::Storage target) const
+      -> Ttx::Semantic::Negotiation::Binding::Status;
+  auto borrow() const -> Perimortem::Utility::Result<
+      Ttx::Concept::Policies::Borrowed,
+      Ttx::Semantic::Negotiation::Binding::Failure>;
+  auto release() const -> void;
 
  private:
   Buffer(Program& program, CUdeviceptr address, Count size)
