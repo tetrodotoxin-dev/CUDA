@@ -11,7 +11,7 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "module",
     srcs = ["module.cpp"],
-    deps = ["//cuda/runtime"],
+    deps = ["//source/cuda/runtime"],
 )
 
 exports(
@@ -22,7 +22,7 @@ exports(
 
 cc_shared_library(
     name = "plugin",
-    exports_filter = ["//cuda:__subpackages__"],
+    exports_filter = ["//source/cuda:__subpackages__"],
     shared_lib_name = select({
         LINUX: "libttx_cuda.so",
         WINDOWS: "ttx_cuda.dll",
@@ -59,7 +59,7 @@ cc_import(
     # Keep the compiler's runtime libraries in the consumer's deployment graph.
     deps = [
         "//build:compute",
-        "//cuda/contracts:headers",
+        "//source/cuda/contracts:headers",
     ],
 )
 

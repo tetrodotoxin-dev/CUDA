@@ -6,10 +6,10 @@ load("//build:release.bzl", "sdk_release")
 sdk_release(
     name = "release",
     headers = [
-        "//cuda/contracts:public_headers",
-        "//cuda/runtime:public_headers",
+        "//source/cuda/contracts:public_headers",
+        "//source/cuda/runtime:public_headers",
     ],
-    library = "//cuda:plugin",
+    library = "//source/cuda:plugin",
     scripts = [".vscode/format.sh"],
     sources = glob([
         ".bazelrc",
@@ -22,9 +22,9 @@ sdk_release(
         "MODULE.bazel",
     ]) + [
         "//build:sources",
-        "//cuda:sources",
-        "//cuda/contracts:sources",
-        "//cuda/runtime:sources",
+        "//source/cuda:sources",
+        "//source/cuda/contracts:sources",
+        "//source/cuda/runtime:sources",
         "//validation:sources",
     ],
 )

@@ -11,6 +11,7 @@ cc_library(
         "*.h",
         "*.hpp",
     ]),
+    includes = ["../.."],
     deps = ["@ttx"],
 )
 

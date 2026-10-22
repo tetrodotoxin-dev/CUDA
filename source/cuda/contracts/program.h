@@ -48,6 +48,6 @@ typedef struct cuda_program_ops {
 } cuda_program_ops;
 
 // C consumers can request the same prepared API form as the C++ facade.
-PERIMORTEM_C const ttx_representation* cuda_program_representation(void);
+C_LINKAGE const ttx_representation* cuda_program_representation(void);
 
 #endif

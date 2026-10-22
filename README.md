@@ -39,17 +39,17 @@ driver.
 From the repository root:
 
 ```sh
-bazel build --config=release //cuda:plugin
+bazel build --config=release //source/cuda:plugin
 bazel test --config=debug //validation:consumer //validation:runtime
 bazel test --config=release //validation:consumer //validation:runtime
 ```
 
-The Linux plugin is written to `.bin/bin/cuda/libttx_cuda.so`. Add
+The Linux plugin is written to `.bin/bin/source/cuda/libttx_cuda.so`. Add
 `--config=windows` to cross-build `ttx_cuda.dll` and its import library from Linux.
 The pinned NVRTC and builtins libraries are carried through the build's runtime
 dependencies. The tests require a CUDA capable GPU and exercise both C
 and C++ consumers, compilation diagnostics, argument agreement, buffer transfers
 and retained resource lifetimes.
 
-Native consumers use `//cuda/contracts` and `//cuda/runtime`. The optional
+Native consumers use `//source/cuda/contracts` and `//source/cuda/runtime`. The optional
 `//build:fft` target acquires cuFFT for callers that need it.

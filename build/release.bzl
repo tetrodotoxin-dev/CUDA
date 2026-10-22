@@ -15,7 +15,7 @@ def sdk_release(name, headers, library, sources, scripts):
         name = name + "_headers",
         srcs = headers,
         prefix = "include",
-        strip_prefix = strip_prefix.from_root(),
+        strip_prefix = strip_prefix.from_root("source"),
     )
     pkg_files(
         name = name + "_library",
@@ -24,9 +24,9 @@ def sdk_release(name, headers, library, sources, scripts):
     )
     pkg_files(
         name = name + "_interface",
-        srcs = select({WINDOWS: ["//cuda:interface"], "//conditions:default": []}),
+        srcs = select({WINDOWS: ["//source/cuda:interface"], "//conditions:default": []}),
         prefix = "lib",
-        renames = select({WINDOWS: {"//cuda:interface": "ttx_cuda.lib"}, "//conditions:default": {}}),
+        renames = select({WINDOWS: {"//source/cuda:interface": "ttx_cuda.lib"}, "//conditions:default": {}}),
     )
 
     # The Windows driver loader is linked into the provider. Carry its notice

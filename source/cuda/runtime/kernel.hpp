@@ -55,6 +55,6 @@ class Kernel {
   CUfunction function;
   Perimortem::Memory::Dynamic::Bytes form;
   Perimortem::Memory::Dynamic::Vector<Count> offsets;
-  mutable Perimortem::Memory::Dynamic::Vector<void*> arguments;
+  Perimortem::Memory::Dynamic::Vector<void*> arguments;
 };
 }  // namespace Cuda::Runtime

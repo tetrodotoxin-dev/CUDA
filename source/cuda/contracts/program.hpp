@@ -23,7 +23,7 @@ TTX_DATA_RECORD(
 
 namespace Cuda::Contracts {
 
-// Program produces kernels and device storage as Borrowed answers. Each keeps
+// Program produces kernels and device storage as Borrowed abstracts. Each keeps
 // the state it needs after the producing Program is released. The caller binds
 // the corresponding Kernel or Buffer interface and releases the acquired
 // answer after its final use.

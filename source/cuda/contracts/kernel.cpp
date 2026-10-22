@@ -3,7 +3,7 @@
 
 #include "cuda/contracts/kernel.hpp"
 
-PERIMORTEM_C const ttx_representation* cuda_kernel_representation(void) {
+C_LINKAGE const ttx_representation* cuda_kernel_representation(void) {
   return &Ttx::Semantic::Negotiation::Binding::representation<
       Cuda::Contracts::Kernel>();
 }

@@ -7,16 +7,16 @@ load("@tetro_toolchain//:library.bzl", "WINDOWS")
 cc_test(
     name = "runtime",
     srcs = ["runtime.cpp"],
-    args = ["$(rootpath //cuda:plugin)"],
-    data = ["//cuda:plugin"],
+    args = ["$(rootpath //source/cuda:plugin)"],
+    data = ["//source/cuda:plugin"],
     tags = ["local"],
-    deps = ["//cuda:ttx_cuda"],
+    deps = ["//source/cuda:ttx_cuda"],
 )
 
 cc_test(
     name = "consumer",
     srcs = ["consumer.c"],
-    args = ["$(rootpath //cuda:plugin)"],
+    args = ["$(rootpath //source/cuda:plugin)"],
     copts = select({
         WINDOWS: [
             "/clang:-std=c17",
@@ -31,9 +31,9 @@ cc_test(
             "-Werror",
         ],
     }),
-    data = ["//cuda:plugin"],
+    data = ["//source/cuda:plugin"],
     tags = ["local"],
-    deps = ["//cuda:ttx_cuda"],
+    deps = ["//source/cuda:ttx_cuda"],
 )
 
 filegroup(

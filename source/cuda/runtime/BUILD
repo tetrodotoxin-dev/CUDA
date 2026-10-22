@@ -11,7 +11,7 @@ cc_library(
     hdrs = glob(["*.hpp"]),
     deps = [
         "//build:compute",
-        "//cuda/contracts",
+        "//source/cuda/contracts",
     ],
 )
 

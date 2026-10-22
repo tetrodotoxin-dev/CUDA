@@ -3,7 +3,7 @@
 
 #include "cuda/contracts/buffer.hpp"
 
-PERIMORTEM_C const ttx_representation* cuda_buffer_representation(void) {
+C_LINKAGE const ttx_representation* cuda_buffer_representation(void) {
   return &Ttx::Semantic::Negotiation::Binding::representation<
       Cuda::Contracts::Buffer>();
 }

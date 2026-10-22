@@ -13,6 +13,6 @@ if (($# > 0)); then
 fi
 
 # Keep generated Bazel trees and dependencies outside the formatter input.
-rg --files --null cuda validation \
+rg --files --null source validation \
   -g '*.c' -g '*.h' -g '*.cpp' -g '*.hpp' |
   xargs --null --no-run-if-empty clang-format -i
